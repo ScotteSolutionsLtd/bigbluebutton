@@ -13,6 +13,7 @@ package org.bigbluebutton.air.main.views {
 	
 	import org.bigbluebutton.air.common.PageEnum;
 	import org.bigbluebutton.air.common.TransitionAnimationEnum;
+	import org.bigbluebutton.air.common.views.NoTabView;
 	import org.bigbluebutton.air.main.models.IUISession;
 	
 	import robotlegs.bender.bundles.mvcs.Mediator;
@@ -28,19 +29,25 @@ package org.bigbluebutton.air.main.views {
 		override public function initialize():void {
 			NativeApplication.nativeApplication.addEventListener(KeyboardEvent.KEY_DOWN, onKeyDown, false, 0, true);
 			uiSession.pageChangedSignal.add(changePage);
-			uiSession.pushPage(PageEnum.MAIN);
 		}
 		
 		private function onKeyDown(event:KeyboardEvent):void {
 			if (event.keyCode == Keyboard.BACK) {
 				event.preventDefault();
 				event.stopImmediatePropagation();
-				uiSession.pushPage(PageEnum.EXIT);
+				if (uiSession.currentPage != PageEnum.MAIN && view.getElementAt(0) is NoTabView) {
+					(view.getElementAt(0) as NoTabView).triggerLeftMenuTap(event);
+				}
 			}
 		}
 		
 		protected function changePage(pageName:String, pageRemoved:Boolean = false, animation:int = TransitionAnimationEnum.APPEAR, transition:ViewTransitionBase = null):void {
-			trace("PagesNavigatorViewMediator request change page to: " + pageName);
+			
+			if (pageName == null) {
+				trace("**** pageName == null");
+			}
+			//@fixme pageName is sometimes null, it should never happen
+			trace("***** PagesNavigatorViewMediator request change page to: " + pageName);
 			switch (animation) {
 				case TransitionAnimationEnum.APPEAR:  {
 					var appear:CrossFadeViewTransition = new CrossFadeViewTransition;
@@ -75,6 +82,7 @@ package org.bigbluebutton.air.main.views {
 			} else if (pageRemoved) {
 				view.popView(transition);
 			} else if (pageName != null && pageName != "") {
+				trace("SWITCHING PAGE to " + pageName);
 				view.pushView(PageEnum.getClassfromName(pageName), null, null, transition);
 			}
 		}

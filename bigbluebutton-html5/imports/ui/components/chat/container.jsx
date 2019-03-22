@@ -1,34 +1,38 @@
-import React, { Component, PropTypes } from 'react';
+import React, { PureComponent } from 'react';
 import { defineMessages, injectIntl } from 'react-intl';
-import { createContainer } from 'meteor/react-meteor-data';
-
-const CHAT_CONFIG = Meteor.settings.public.chat;
-const PUBLIC_CHAT_KEY = CHAT_CONFIG.public_id;
-
+import { withTracker } from 'meteor/react-meteor-data';
+import { Session } from 'meteor/session';
+import Auth from '/imports/ui/services/auth';
 import Chat from './component';
 import ChatService from './service';
 
+const CHAT_CONFIG = Meteor.settings.public.chat;
+const PUBLIC_CHAT_KEY = CHAT_CONFIG.public_id;
+const CHAT_CLEAR = CHAT_CONFIG.system_messages_keys.chat_clear;
+
 const intlMessages = defineMessages({
+  [CHAT_CLEAR]: {
+    id: 'app.chat.clearPublicChatMessage',
+    description: 'message of when clear the public chat',
+  },
   titlePublic: {
     id: 'app.chat.titlePublic',
-    defaultMessage: 'Public Chat',
     description: 'Public chat title',
   },
   titlePrivate: {
     id: 'app.chat.titlePrivate',
-    defaultMessage: 'Private Chat with {name}',
     description: 'Private chat title',
   },
   partnerDisconnected: {
     id: 'app.chat.partnerDisconnected',
-    defaultMessage: '{name} has left the meeting',
     description: 'System chat message when the private chat partnet disconnect from the meeting',
   },
 });
 
-class ChatContainer extends Component {
-  constructor(props) {
-    super(props);
+class ChatContainer extends PureComponent {
+  componentDidMount() {
+    // in case of reopening a chat, need to make sure it's removed from closed list
+    ChatService.removeFromClosedChatsSession();
   }
 
   render() {
@@ -40,53 +44,109 @@ class ChatContainer extends Component {
   }
 }
 
-export default injectIntl(createContainer(({ params, intl }) => {
-  const chatID = params.chatID || PUBLIC_CHAT_KEY;
-
+export default injectIntl(withTracker(({ intl }) => {
+  const chatID = Session.get('idChatOpen') || PUBLIC_CHAT_KEY;
   let messages = [];
   let isChatLocked = ChatService.isChatLocked(chatID);
   let title = intl.formatMessage(intlMessages.titlePublic);
   let chatName = title;
+  let partnerIsLoggedOut = false;
+  let systemMessageIntl = {};
 
   if (chatID === PUBLIC_CHAT_KEY) {
-    messages = ChatService.getPublicMessages();
+    const { welcomeProp } = ChatService.getMeeting();
+    const user = ChatService.getUser(Auth.userID);
+
+    messages = ChatService.getPublicGroupMessages();
+
+    const time = user.loginTime;
+    const welcomeId = `welcome-msg-${time}`;
+
+    const welcomeMsg = {
+      id: welcomeId,
+      content: [{
+        id: welcomeId,
+        text: welcomeProp.welcomeMsg,
+        time,
+      }],
+      time,
+      sender: null,
+    };
+
+    const moderatorTime = time + 1;
+    const moderatorId = `moderator-msg-${moderatorTime}`;
+
+    const moderatorMsg = {
+      id: moderatorId,
+      content: [{
+        id: moderatorId,
+        text: welcomeProp.modOnlyMessage,
+        time: moderatorTime,
+      }],
+      time: moderatorTime,
+      sender: null,
+    };
+
+    const messagesBeforeWelcomeMsg =
+      ChatService.reduceAndMapGroupMessages(messages.filter(message => message.timestamp < time));
+    const messagesAfterWelcomeMsg =
+      ChatService.reduceAndMapGroupMessages(messages.filter(message => message.timestamp >= time));
+
+    const clearMessage = messages.filter(message => message.message === 'PUBLIC_CHAT_CLEAR');
+
+    const hasClearMessage = clearMessage.length;
+
+    const showModeratorMsg =
+      (user.isModerator)
+      && ((hasClearMessage && clearMessage[0].timestamp < moderatorTime) || !hasClearMessage);
+
+    const messagesFormated = messagesBeforeWelcomeMsg
+      .concat(welcomeMsg)
+      .concat(showModeratorMsg ? moderatorMsg : [])
+      .concat(messagesAfterWelcomeMsg);
+
+    messages = messagesFormated.sort((a, b) => (a.time - b.time));
   } else {
-    messages = ChatService.getPrivateMessages(chatID);
-  }
+    messages = ChatService.getPrivateGroupMessages();
 
-  let user = ChatService.getUser(chatID, '{{NAME}}');
-
-  let partnerIsLoggedOut = false;
-
-  if (user) {
+    const user = ChatService.getUser(chatID);
+    chatName = user.name;
+    systemMessageIntl = { 0: user.name };
+    title = intl.formatMessage(intlMessages.titlePrivate, systemMessageIntl);
     partnerIsLoggedOut = !user.isOnline;
 
-    if (messages && chatID !== PUBLIC_CHAT_KEY) {
-      let userMessage = messages.find(m => m.sender !== null);
-      let user = ChatService.getUser(chatID, '{{NAME}}');
-
-      title = intl.formatMessage(intlMessages.titlePrivate, { name: user.name });
-      chatName = user.name;
-
-      if (!user.isOnline) {
-        let time = Date.now();
-        let id = `partner-disconnected-${time}`;
-        let messagePartnerLoggedOut = {
+    if (partnerIsLoggedOut) {
+      const time = Date.now();
+      const id = `partner-disconnected-${time}`;
+      const messagePartnerLoggedOut = {
+        id,
+        content: [{
           id,
-          content: [{
-            id,
-            text: intl.formatMessage(intlMessages.partnerDisconnected, { name: user.name }),
-            time,
-          },],
+          text: 'partnerDisconnected',
           time,
-          sender: null,
-        };
+        }],
+        time,
+        sender: null,
+      };
 
-        messages.push(messagePartnerLoggedOut);
-        isChatLocked = true;
-      }
+      messages.push(messagePartnerLoggedOut);
+      isChatLocked = true;
     }
   }
+
+  messages = messages.map((message) => {
+    if (message.sender) return message;
+
+    return {
+      ...message,
+      content: message.content.map(content => ({
+        ...content,
+        text: content.text in intlMessages ?
+          `<b><i>${intl.formatMessage(intlMessages[content.text], systemMessageIntl)}</i></b>` : content.text,
+      })),
+    };
+  });
+
 
   const scrollPosition = ChatService.getScrollPosition(chatID);
   const hasUnreadMessages = ChatService.hasUnreadMessages(chatID);
@@ -102,19 +162,20 @@ export default injectIntl(createContainer(({ params, intl }) => {
     partnerIsLoggedOut,
     isChatLocked,
     scrollPosition,
+    minMessageLength: CHAT_CONFIG.min_message_length,
+    maxMessageLength: CHAT_CONFIG.max_message_length,
+    UnsentMessagesCollection: ChatService.UnsentMessagesCollection,
     actions: {
+      handleClosePrivateChat: chatId => ChatService.closePrivateChat(chatId),
 
-      handleClosePrivateChat: chatID => ChatService.closePrivateChat(chatID),
-
-      handleSendMessage: message => {
-        let sentMessage = ChatService.sendMessage(chatID, message);
-        ChatService.updateScrollPosition(chatID, null); //null so its scrolls to bottom
-        // ChatService.updateUnreadMessage(chatID, sentMessage.from_time);
+      handleSendMessage: (message) => {
+        ChatService.updateScrollPosition(null);
+        return ChatService.sendGroupMessage(message);
       },
 
-      handleScrollUpdate: position => ChatService.updateScrollPosition(chatID, position),
+      handleScrollUpdate: position => ChatService.updateScrollPosition(position),
 
-      handleReadMessage: timestamp => ChatService.updateUnreadMessage(chatID, timestamp),
+      handleReadMessage: timestamp => ChatService.updateUnreadMessage(timestamp),
     },
   };
-}, ChatContainer));
+})(ChatContainer));

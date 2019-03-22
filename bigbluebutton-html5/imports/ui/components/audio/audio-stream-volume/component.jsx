@@ -1,4 +1,6 @@
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
+import PropTypes from 'prop-types';
+import { log } from '/imports/ui/services/api';
 
 const propTypes = {
   low: PropTypes.number,
@@ -9,8 +11,8 @@ const propTypes = {
 
 const defaultProps = {
   low: 0,
-  optimum: .05,
-  high: .3,
+  optimum: 0.05,
+  high: 0.3,
   deviceId: undefined,
 };
 
@@ -27,7 +29,6 @@ class AudioStreamVolume extends Component {
     this.handleError = this.handleError.bind(this);
 
     this.state = {
-      instant: 0,
       slow: 0,
     };
   }
@@ -40,7 +41,6 @@ class AudioStreamVolume extends Component {
     if (prevProps.deviceId !== this.props.deviceId) {
       this.closeAudioContext().then(() => {
         this.setState({
-          instant: 0,
           slow: 0,
         });
         this.createAudioContext();
@@ -58,7 +58,7 @@ class AudioStreamVolume extends Component {
     this.scriptProcessor.onaudioprocess = this.handleAudioProcess;
     this.source = null;
 
-    let constraints = {
+    const constraints = {
       audio: true,
     };
 
@@ -95,19 +95,20 @@ class AudioStreamVolume extends Component {
     const sum = input.reduce((a, b) => a + (b * b), 0);
     const instant = Math.sqrt(sum / input.length);
 
-    this.setState((prevState) => ({
-      instant: instant,
-      slow: 0.75 * prevState.slow + 0.25 * instant,
+    this.setState(prevState => ({
+      instant,
+      slow: (0.75 * prevState.slow) + (0.25 * instant),
     }));
   }
 
   handleError(error) {
-    console.error(error);
+    log('error', JSON.stringify(error));
   }
 
   render() {
-    const { low, optimum, high, deviceId, ...props } = this.props;
-    const { instant, slow } = this.state;
+    const {
+      low, optimum, high, ...props
+    } = this.props;
 
     return (
       <meter
@@ -121,7 +122,7 @@ class AudioStreamVolume extends Component {
       />
     );
   }
-};
+}
 
 AudioStreamVolume.propTypes = propTypes;
 AudioStreamVolume.defaultProps = defaultProps;

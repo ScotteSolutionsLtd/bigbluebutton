@@ -43,9 +43,7 @@ BASE=/var/bigbluebutton/recording
 STATUS=$BASE/status
 source /etc/bigbluebutton/bigbluebutton-release
 
-SERVLET_CONTAINER=tomcat7
-SERVLET_DIR=/var/lib/$SERVLET_CONTAINER/webapps
-BBB_WEB=$(cat ${SERVLET_DIR}/bigbluebutton/WEB-INF/classes/bigbluebutton.properties | sed -n '/^bigbluebutton.web.serverURL/{s/.*\///;p}')
+BBB_WEB=$(cat /usr/share/bbb-web/WEB-INF/classes/bigbluebutton.properties | sed -n '/^bigbluebutton.web.serverURL/{s/.*\///;p}')
 
 RECORDING_DIR=$(cat /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml | sed -n '/\(recording_dir\)/{s/.*recording_dir:[ ]*//;s/;//;p}')
 PUBLISHED_DIR=$(cat /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml | sed -n '/\(published_dir\)/{s/.*published_dir:[ ]*//;s/;//;p}')
@@ -338,12 +336,12 @@ if [ $REPUBLISH ]; then
 fi 
 
 if [ $CLEAN ]; then
-	sudo /etc/init.d/bbb-record stop
+	sudo /etc/init.d/bbb-record-core stop
 	for type in $TYPES; do
 		echo " clearning logs in /var/log/bigbluebutton/$type"
 		find /var/log/bigbluebutton/$type -name "*.log" -exec sudo rm '{}' \;
 	done
-	sudo /etc/init.d/bbb-record start
+	sudo /etc/init.d/bbb-record-core start
 fi
 
 if [ $DELETE ]; then
@@ -355,6 +353,7 @@ if [ $DELETE ]; then
   echo "deleting: $MEETING_ID"
   # Remove the status files first to avoid issues with concurrent
   # recording processing
+  rm -f /var/bigbluebutton/recording/status/ended/$MEETING_ID*
   rm -f /var/bigbluebutton/recording/status/recorded/$MEETING_ID*
   rm -f /var/bigbluebutton/recording/status/archived/$MEETING_ID*
   rm -f /var/bigbluebutton/recording/status/sanity/$MEETING_ID*
@@ -716,10 +715,11 @@ if [ $CHECK ]; then
 	#set -x
         for type in $TYPES; do
 		for recording in $(find $BASE/publish/$type -name metadata.xml); do
-			url_playback=$(cat $recording | grep "<link>" | sed 's/[ ]*<link>http:\/\/\([^\"\/]*\)[^>]*>/\1/g')
-			if [ "$BBB_WEB" != "$url_playback" ]; then
+			url_playback_http=$(cat $recording | grep "<link>" | sed 's/[ ]*<link>http:\/\/\([^\"\/]*\)[^>]*>/\1/g')
+			url_playback_https=$(cat $recording | grep "<link>" | sed 's/[ ]*<link>https:\/\/\([^\"\/]*\)[^>]*>/\1/g')
+			if [ "$BBB_WEB" != "$url_playback_http" ] && [ "$BBB_WEB" != "$url_playback_https" ]; then
                                 echo
-                                echo "# The hostname in <link> .. </link> ($url_playback)"
+                                echo "# The hostname in <link> .. </link> ($url_playback_http)"
                                 echo "#     $recording"
                                 echo "# do not match the hostname for bigbluebutton.web.serverURL ($BBB_WEB)"
                                 echo "#     /usr/share/red5/webapps/bigbluebutton/WEB-INF/bigbluebutton.properties"
@@ -727,10 +727,11 @@ if [ $CHECK ]; then
 			fi
 		done
 		for recording in $(find /var/bigbluebutton/published/$type -name metadata.xml); do
-			url_playback=$(cat $recording | grep "<link>" | sed 's/[ ]*<link>http:\/\/\([^\"\/]*\)[^>]*>/\1/g')
-			if [ "$BBB_WEB" != "$url_playback" ]; then
+			url_playback_http=$(cat $recording | grep "<link>" | sed 's/[ ]*<link>http:\/\/\([^\"\/]*\)[^>]*>/\1/g')
+			url_playback_https=$(cat $recording | grep "<link>" | sed 's/[ ]*<link>https:\/\/\([^\"\/]*\)[^>]*>/\1/g')
+			if [ "$BBB_WEB" != "$url_playback_http" ] && [ "$BBB_WEB" != "$url_playback_https" ]; then
                                 echo
-                                echo "# The hostname in <link> .. </link> ($url_playback)"
+                                echo "# The hostname in <link> .. </link> ($url_playback_http)"
                                 echo "#     $recording"
                                 echo "# do not match the hostname for bigbluebutton.web.serverURL ($BBB_WEB)"
                                 echo "#     /usr/share/red5/webapps/bigbluebutton/WEB-INF/bigbluebutton.properties"

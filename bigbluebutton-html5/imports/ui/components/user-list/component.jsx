@@ -1,169 +1,120 @@
-import React, { Component, PropTypes } from 'react';
-import { withRouter } from 'react-router';
-import ReactCSSTransitionGroup from 'react-addons-css-transition-group';
-import styles from './styles.scss';
-import cx from 'classnames';
-import { defineMessages, injectIntl } from 'react-intl';
-import UserListItem from './user-list-item/component.jsx';
-import ChatListItem from './chat-list-item/component.jsx';
+import React, { PureComponent } from 'react';
+import { injectIntl } from 'react-intl';
+import PropTypes from 'prop-types';
+import injectWbResizeEvent from '/imports/ui/components/presentation/resize-wrapper/component';
+import { styles } from './styles';
+import CustomLogo from './custom-logo/component';
+import UserContentContainer from './user-list-content/container';
 
 const propTypes = {
-  openChats: PropTypes.array.isRequired,
-  users: PropTypes.array.isRequired,
+  activeChats: PropTypes.arrayOf(String).isRequired,
+  compact: PropTypes.bool,
+  intl: PropTypes.shape({
+    formatMessage: PropTypes.func.isRequired,
+  }).isRequired,
+  currentUser: PropTypes.shape({}).isRequired,
+  CustomLogoUrl: PropTypes.string.isRequired,
+  handleEmojiChange: PropTypes.func.isRequired,
+  getUsersId: PropTypes.func.isRequired,
+  isBreakoutRoom: PropTypes.bool,
+  getAvailableActions: PropTypes.func.isRequired,
+  normalizeEmojiName: PropTypes.func.isRequired,
+  isMeetingLocked: PropTypes.func.isRequired,
+  isPublicChat: PropTypes.func.isRequired,
+  setEmojiStatus: PropTypes.func.isRequired,
+  assignPresenter: PropTypes.func.isRequired,
+  removeUser: PropTypes.func.isRequired,
+  toggleVoice: PropTypes.func.isRequired,
+  muteAllUsers: PropTypes.func.isRequired,
+  muteAllExceptPresenter: PropTypes.func.isRequired,
+  changeRole: PropTypes.func.isRequired,
+  roving: PropTypes.func.isRequired,
+  getGroupChatPrivate: PropTypes.func.isRequired,
+  showBranding: PropTypes.bool.isRequired,
+  toggleUserLock: PropTypes.func.isRequired,
 };
 
 const defaultProps = {
+  compact: false,
+  isBreakoutRoom: false,
 };
 
-const listTransition = {
-  enter: styles.enter,
-  enterActive: styles.enterActive,
-  appear: styles.appear,
-  appearActive: styles.appearActive,
-  leave: styles.leave,
-  leaveActive: styles.leaveActive,
-};
-
-class UserList extends Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      compact: this.props.compact,
-    };
-  }
-
+class UserList extends PureComponent {
   render() {
+    const {
+      intl,
+      activeChats,
+      compact,
+      currentUser,
+      isBreakoutRoom,
+      setEmojiStatus,
+      assignPresenter,
+      removeUser,
+      toggleVoice,
+      muteAllUsers,
+      muteAllExceptPresenter,
+      changeRole,
+      getAvailableActions,
+      normalizeEmojiName,
+      isMeetingLocked,
+      isPublicChat,
+      roving,
+      CustomLogoUrl,
+      getGroupChatPrivate,
+      handleEmojiChange,
+      getEmojiList,
+      getEmoji,
+      showBranding,
+      hasBreakoutRoom,
+      getUsersId,
+      hasPrivateChatBetweenUsers,
+      toggleUserLock,
+    } = this.props;
+
     return (
       <div className={styles.userList}>
-        {this.renderHeader()}
-        {this.renderContent()}
-      </div>
-    );
-  }
-
-  renderHeader() {
-    const { intl } = this.props;
-
-    return (
-      <div className={styles.header}>
         {
-          !this.state.compact ?
-          <h2 className={styles.headerTitle}>
-            {intl.formatMessage(intlMessages.participantsTitle)}
-          </h2> : null
+          showBranding
+            && !compact
+            && CustomLogoUrl
+            ? <CustomLogo CustomLogoUrl={CustomLogoUrl} /> : null
         }
-      </div>
-    );
-  }
-
-  renderContent() {
-    return (
-      <div className={styles.content}>
-        {this.renderMessages()}
-        {this.renderParticipants()}
-      </div>
-    );
-  }
-
-  renderMessages() {
-    const {
-      openChats,
-      openChat,
-      intl,
-    } = this.props;
-
-    return (
-      <div className={styles.messages}>
-        {
-          !this.state.compact ?
-          <h3 className={styles.smallTitle}>
-            {intl.formatMessage(intlMessages.messagesTitle)}
-          </h3> : <hr className={styles.separator}></hr>
-        }
-        <div className={styles.scrollableList}>
-          <ReactCSSTransitionGroup
-            transitionName={listTransition}
-            transitionAppear={true}
-            transitionEnter={true}
-            transitionLeave={false}
-            transitionAppearTimeout={0}
-            transitionEnterTimeout={0}
-            transitionLeaveTimeout={0}
-            component="ul"
-            className={cx(styles.chatsList, styles.scrollableList)}>
-              {openChats.map(chat => (
-                <ChatListItem
-                  compact={this.state.compact}
-                  key={chat.id}
-                  openChat={openChat}
-                  chat={chat} />
-              ))}
-          </ReactCSSTransitionGroup>
-        </div>
-      </div>
-    );
-  }
-
-  renderParticipants() {
-    const {
-      users,
-      currentUser,
-      userActions,
-      compact,
-      isBreakoutRoom,
-      intl,
-    } = this.props;
-
-    return (
-      <div className={styles.participants}>
-        {
-          !this.state.compact ?
-          <h3 className={styles.smallTitle}>
-            {intl.formatMessage(intlMessages.usersTitle)}
-            &nbsp;({users.length})
-          </h3> : <hr className={styles.separator}></hr>
-        }
-        <ReactCSSTransitionGroup
-          transitionName={listTransition}
-          transitionAppear={true}
-          transitionEnter={true}
-          transitionLeave={true}
-          transitionAppearTimeout={0}
-          transitionEnterTimeout={0}
-          transitionLeaveTimeout={0}
-          component="ul"
-          className={cx(styles.participantsList, styles.scrollableList)}>
-          {
-            users.map(user => (
-            <UserListItem
-              compact={this.state.compact}
-              key={user.id}
-              isBreakoutRoom={isBreakoutRoom}
-              user={user}
-              currentUser={currentUser}
-              userActions={userActions}
-            />
-          ))}
-        </ReactCSSTransitionGroup>
+        {<UserContentContainer
+          {...{
+            intl,
+            activeChats,
+            compact,
+            currentUser,
+            isBreakoutRoom,
+            setEmojiStatus,
+            assignPresenter,
+            removeUser,
+            toggleVoice,
+            muteAllUsers,
+            muteAllExceptPresenter,
+            changeRole,
+            getAvailableActions,
+            normalizeEmojiName,
+            isMeetingLocked,
+            isPublicChat,
+            roving,
+            getGroupChatPrivate,
+            handleEmojiChange,
+            getEmojiList,
+            getEmoji,
+            hasBreakoutRoom,
+            getUsersId,
+            hasPrivateChatBetweenUsers,
+            toggleUserLock,
+          }
+          }
+        />}
       </div>
     );
   }
 }
 
-const intlMessages = defineMessages({
-  usersTitle: {
-    id: 'app.userlist.usersTitle',
-    description: 'Title for the Header',
-  },
-  messagesTitle: {
-    id: 'app.userlist.messagesTitle',
-    description: 'Title for the messages list',
-  },
-  participantsTitle: {
-    id: 'app.userlist.participantsTitle',
-    description: 'Title for the Users list',
-  },
-});
-
 UserList.propTypes = propTypes;
-export default withRouter(injectIntl(UserList));
+UserList.defaultProps = defaultProps;
+
+export default injectWbResizeEvent(injectIntl(UserList));

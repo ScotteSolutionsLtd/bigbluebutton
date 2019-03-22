@@ -1,9 +1,10 @@
-import React, { PropTypes } from 'react';
-import BaseButton from './base/component';
-import styles from './styles';
+import React from 'react';
+import PropTypes from 'prop-types';
 import cx from 'classnames';
-
+import Tooltip from '/imports/ui/components/tooltip/component';
+import { styles } from './styles';
 import Icon from '../icon/component';
+import BaseButton from './base/component';
 
 const SIZES = [
   'jumbo', 'lg', 'md', 'sm',
@@ -64,6 +65,14 @@ const propTypes = {
    * @defaultValue false
    */
   hideLabel: PropTypes.bool,
+
+  /**
+   * Optional SVG / html object can be passed to the button as an icon
+   * Has to be styled before being sent to the Button
+   * (e.g width, height, position and percentage-based object's coordinates)
+   * @defaultvalue undefined
+   */
+  customIcon: PropTypes.node,
 };
 
 const defaultProps = {
@@ -78,23 +87,16 @@ const defaultProps = {
 };
 
 export default class Button extends BaseButton {
-  constructor(props) {
-    super(props);
-  }
-
   _getClassNames() {
     const {
-      icon,
       size,
       color,
-      disabled,
       ghost,
       circle,
       block,
-      iconRight,
     } = this.props;
 
-    let propClassNames = {};
+    const propClassNames = {};
 
     propClassNames[styles.button] = true;
     propClassNames[styles[size]] = true;
@@ -102,15 +104,34 @@ export default class Button extends BaseButton {
     propClassNames[styles.ghost] = ghost;
     propClassNames[styles.circle] = circle;
     propClassNames[styles.block] = block;
-    propClassNames[styles.iconRight] = iconRight;
-    propClassNames[styles.disabled] = disabled;
 
     return propClassNames;
   }
 
   render() {
-    let renderFuncName = this.props.circle ?
-      'renderCircle' : 'renderDefault';
+    const {
+      circle,
+      hideLabel,
+      label,
+      'aria-label': ariaLabel,
+      'aria-expanded': ariaExpanded,
+      tooltipDistance,
+    } = this.props;
+
+    const renderFuncName = circle ? 'renderCircle' : 'renderDefault';
+
+    if (hideLabel && !ariaExpanded) {
+      const tooltipLabel = label || ariaLabel;
+
+      return (
+        <Tooltip
+          tooltipDistance={tooltipDistance}
+          title={tooltipLabel}
+        >
+          {this[renderFuncName]()}
+        </Tooltip>
+      );
+    }
 
     return this[renderFuncName]();
   }
@@ -119,17 +140,19 @@ export default class Button extends BaseButton {
     const {
       className,
       iconRight,
-      ...otherProps,
+      ...otherProps
     } = this.props;
 
     const remainingProps = Object.assign({}, otherProps);
     delete remainingProps.icon;
+    delete remainingProps.customIcon;
     delete remainingProps.size;
     delete remainingProps.color;
     delete remainingProps.ghost;
     delete remainingProps.circle;
     delete remainingProps.block;
     delete remainingProps.hideLabel;
+    delete remainingProps.tooltipDistance;
 
     /* TODO: We can change this and make the button with flexbox to avoid html
       changes */
@@ -152,7 +175,7 @@ export default class Button extends BaseButton {
       className,
       size,
       iconRight,
-      ...otherProps,
+      ...otherProps
     } = this.props;
 
     const remainingProps = Object.assign({}, otherProps);
@@ -162,6 +185,7 @@ export default class Button extends BaseButton {
     delete remainingProps.circle;
     delete remainingProps.block;
     delete remainingProps.hideLabel;
+    delete remainingProps.tooltipDistance;
 
     return (
       <BaseButton
@@ -178,10 +202,15 @@ export default class Button extends BaseButton {
   }
 
   renderIcon() {
-    const iconName = this.props.icon;
+    const {
+      icon: iconName,
+      customIcon,
+    } = this.props;
 
     if (iconName) {
       return (<Icon className={styles.icon} iconName={iconName} />);
+    } if (customIcon) {
+      return customIcon;
     }
 
     return null;
@@ -190,7 +219,7 @@ export default class Button extends BaseButton {
   renderLabel() {
     const { label, hideLabel } = this.props;
 
-    let classNames = {};
+    const classNames = {};
 
     classNames[styles.label] = true;
     classNames[styles.hideLabel] = hideLabel;

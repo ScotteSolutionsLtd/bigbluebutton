@@ -1,35 +1,74 @@
+import { HTTP } from 'meteor/http';
 import { check } from 'meteor/check';
 import Presentations from '/imports/api/presentations';
 import Logger from '/imports/startup/server/logger';
+import flat from 'flat';
 
 import addSlide from '/imports/api/slides/server/modifiers/addSlide';
+import setCurrentPresentation from './setCurrentPresentation';
 
-const addSlides = (meetingId, presentationId, slides) => {
-  let slidesAdded = [];
+const getSlideText = async (url) => {
+  let content = '';
+  try {
+    content = await HTTP.get(url).content;
+  } catch (error) {
+    Logger.error(`No file found. ${error}`);
+  }
+  return content;
+};
 
-  slides.forEach(slide => {
-    slidesAdded.push(addSlide(meetingId, presentationId, slide));
+const addSlides = (meetingId, podId, presentationId, slides) => {
+  const slidesAdded = [];
+
+  slides.forEach(async (slide) => {
+    const content = await getSlideText(slide.txtUri);
+
+    Object.assign(slide, { content });
+
+    slidesAdded.push(addSlide(meetingId, podId, presentationId, slide));
   });
 
   return slidesAdded;
 };
 
-export default function addPresentation(meetingId, presentation) {
+export default function addPresentation(meetingId, podId, presentation) {
   check(meetingId, String);
-  check(presentation, Object);
+  check(podId, String);
+  check(presentation, {
+    id: String,
+    name: String,
+    current: Boolean,
+    pages: [
+      {
+        id: String,
+        num: Number,
+        thumbUri: String,
+        swfUri: String,
+        txtUri: String,
+        svgUri: String,
+        current: Boolean,
+        xOffset: Number,
+        yOffset: Number,
+        widthRatio: Number,
+        heightRatio: Number,
+      },
+    ],
+    downloadable: Boolean,
+  });
 
   const selector = {
     meetingId,
-    'presentation.id': presentation.id,
+    podId,
+    id: presentation.id,
   };
 
   const modifier = {
-    $set: {
+    $set: Object.assign({
       meetingId,
-      'presentation.id': presentation.id,
-      'presentation.name': presentation.name,
-      'presentation.current': presentation.current,
-    },
+      podId,
+      'conversion.done': true,
+      'conversion.error': false,
+    }, flat(presentation, { safe: true })),
   };
 
   const cb = (err, numChanged) => {
@@ -37,17 +76,19 @@ export default function addPresentation(meetingId, presentation) {
       return Logger.error(`Adding presentation to collection: ${err}`);
     }
 
-    addSlides(meetingId, presentation.id, presentation.pages);
+    addSlides(meetingId, podId, presentation.id, presentation.pages);
 
     const { insertedId } = numChanged;
     if (insertedId) {
+      if (presentation.current) {
+        setCurrentPresentation(meetingId, podId, presentation.id);
+      }
+
       return Logger.info(`Added presentation id=${presentation.id} meeting=${meetingId}`);
     }
 
-    if (numChanged) {
-      return Logger.info(`Upserted presentation id=${presentation.id} meeting=${meetingId}`);
-    }
+    return Logger.info(`Upserted presentation id=${presentation.id} meeting=${meetingId}`);
   };
 
   return Presentations.upsert(selector, modifier, cb);
-};
+}

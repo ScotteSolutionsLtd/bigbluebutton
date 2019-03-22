@@ -5,19 +5,22 @@ var html5StunTurn = null;
 
 function webRTCCallback(message) {
 	switch (message.status) {
+		case 'succeded':
+			BBB.webRTCCallSucceeded();
+			break;
 		case 'failed':
 			if (message.errorcode !== 1004) {
 				message.cause = null;
 			}
-			monitorTracksStop();
+			//monitorTracksStop();
 			BBB.webRTCCallFailed(inEchoTest, message.errorcode, message.cause);
 			break;
 		case 'ended':
-			monitorTracksStop();
+			//monitorTracksStop();
 			BBB.webRTCCallEnded(inEchoTest);
 			break;
 		case 'started':
-			monitorTracksStart();
+			//monitorTracksStart();
 			BBB.webRTCCallStarted(inEchoTest);
 			break;
 		case 'connecting':
@@ -77,6 +80,8 @@ function callIntoConference(voiceBridge, callback, isListenOnly, stunTurn = null
 			} else {
 				voiceBridge = conferenceVoiceBridge;
 			}
+			callerIdName = callerIdName.replace(/"/g, "'");
+			
 			console.log(callerIdName);
 			webrtc_call(callerIdName, voiceBridge, callback, isListenOnly);
 		});
@@ -123,14 +128,25 @@ function stopWebRTCAudioTestJoinConference(){
 	
 	webRTCCallback({'status': 'transferring'});
 	
-	transferTimeout = setTimeout( function() {
-		console.log("Call transfer failed. No response after 3 seconds");
-		webRTCCallback({'status': 'failed', 'errorcode': 1008});
-		currentSession = null;
-		if (userAgent != null) {
-			var userAgentTemp = userAgent;
-			userAgent = null;
-			userAgentTemp.stop();
+	var transferAttemptCount = 0;
+	
+	transferTimeout = setInterval( function() {
+		// There's a bug with FS and FF where the connection can take awhile to negotiate. I'm adding retries if they're
+		// on that to mitigate the issue. Refer to the following bug for more info, https://freeswitch.org/jira/browse/FS-11661.
+		if (bowser.firefox && transferAttemptCount < 3) {
+			transferAttemptCount++;
+			this.currentSession.dtmf(1);
+		} else {
+			clearInterval(transferTimeout);
+			console.log("Call transfer failed. No response after 5 seconds");
+			webRTCCallback({'status': 'failed', 'errorcode': 1008});
+			releaseUserMedia();
+			currentSession = null;
+			if (userAgent != null) {
+				var userAgentTemp = userAgent;
+				userAgent = null;
+				userAgentTemp.stop();
+			}
 		}
 	}, 5000);
 	
@@ -144,7 +160,7 @@ function userJoinedVoiceHandler(event) {
 	console.log("UserJoinedVoiceHandler - " + event);
 	if (inEchoTest === false && userID === event.userID) {
 		BBB.unlisten("UserJoinedVoiceEvent", userJoinedVoiceHandler);
-		clearTimeout(transferTimeout);
+		clearInterval(transferTimeout);
 		webRTCCallback({'status': 'started'});
 	}
 }
@@ -180,6 +196,9 @@ function createUA(username, server, callback, makeCallFunc) {
   				'password': data['password']
   			};
   		}) : [] );
+		//stunsConfig['remoteIceCandidates'] = ( data['remoteIceCandidates'] ? data['remoteIceCandidates'].map(function(data) {
+		//	return data['ip'];
+		//}) : [] );
   		createUAWithStuns(username, server, callback, stunsConfig, makeCallFunc);
   	}).fail(function(data, textStatus, errorThrown) {
   		BBBLog.error("Could not fetch stun/turn servers", {error: textStatus, user: callerIdName, voiceBridge: conferenceVoiceBridge});
@@ -204,7 +223,8 @@ function createUAWithStuns(username, server, callback, stunsConfig, makeCallFunc
 		autostart: false,
 		userAgentString: "BigBlueButton",
 		stunServers: stunsConfig['stunServers'],
-		turnServers: stunsConfig['turnServers']
+		turnServers: stunsConfig['turnServers'],
+		//artificialRemoteIceCandidates: stunsConfig['remoteIceCandidates']
 	};
 	
 	uaConnected = false;
@@ -219,6 +239,7 @@ function setUserAgentListeners(callback, makeCallFunc) {
 	userAgent.removeAllListeners('connected');
 	userAgent.on('connected', function() {
 		uaConnected = true;
+		callback({'status':'succeded'});
 		makeCallFunc();
 	});
 	userAgent.removeAllListeners('disconnected');
@@ -279,7 +300,7 @@ function webrtc_call(username, voiceBridge, callback, isListenOnly) {
 	}
 	// if the user requests to proceed as listen only (does not require media) or media is already acquired,
 	// proceed with making the call
-	if (isListenOnly || userMicMedia !== undefined) {
+	if (isListenOnly || userMicMedia != null) {
 		makeCallFunc();
 	} else {
 		callback({'status':'mediarequest'});
@@ -379,6 +400,7 @@ function make_call(username, voiceBridge, server, callback, recall, isListenOnly
 	callTimeout = setTimeout(function() {
 		console.log('Ten seconds without updates sending timeout code');
 		callback({'status':'failed', 'errorcode': 1006}); // Failure on call
+		releaseUserMedia();
 		currentSession = null;
 		if (userAgent != null) {
 			var userAgentTemp = userAgent;
@@ -406,6 +428,7 @@ function make_call(username, voiceBridge, server, callback, recall, isListenOnly
 	iceGatheringTimeout = setTimeout(function() {
 		console.log('Thirty seconds without ICE gathering finishing');
 		callback({'status':'failed', 'errorcode': 1011}); // ICE Gathering Failed
+		releaseUserMedia();
 		currentSession = null;
 		if (userAgent != null) {
 			var userAgentTemp = userAgent;
@@ -431,6 +454,7 @@ function make_call(username, voiceBridge, server, callback, recall, isListenOnly
 		console.log('call failed with cause: '+ cause);
 		
 		if (currentSession) {
+			releaseUserMedia();
 			if (callActive === false) {
 				callback({'status':'failed', 'errorcode': 1004, 'cause': cause}); // Failure on call
 				currentSession = null;
@@ -455,7 +479,7 @@ function make_call(username, voiceBridge, server, callback, recall, isListenOnly
 		
 		if (currentSession) {
 			console.log('call ended ' + currentSession.endTime);
-			
+			releaseUserMedia();
 			if (callPurposefullyEnded === true) {
 				callback({'status':'ended'});
 			} else {
@@ -465,6 +489,18 @@ function make_call(username, voiceBridge, server, callback, recall, isListenOnly
 			currentSession = null;
 		} else {
 			console.log('bye event already received');
+		}
+	});
+	currentSession.on('cancel', function(request) {
+		callActive = false;
+
+		if (currentSession) {
+			console.log('call canceled');
+			releaseUserMedia();
+			clearTimeout(callTimeout);
+			currentSession = null;
+		} else {
+			console.log('cancel event already received');
 		}
 	});
 	currentSession.on('accepted', function(data){
@@ -477,21 +513,23 @@ function make_call(username, voiceBridge, server, callback, recall, isListenOnly
 			callback({'status':'waitingforice'});
 			console.log('Waiting for ICE negotiation');
 			iceConnectedTimeout = setTimeout(function() {
-				console.log('60 seconds without ICE finishing');
+				console.log('10 seconds without ICE finishing');
 				callback({'status':'failed', 'errorcode': 1010}); // ICE negotiation timeout
+				releaseUserMedia();
 				currentSession = null;
 				if (userAgent != null) {
 					var userAgentTemp = userAgent;
 					userAgent = null;
 					userAgentTemp.stop();
 				}
-			}, 60000);
+			}, 10000);
 		}
 		clearTimeout(callTimeout);
 	});
 	currentSession.mediaHandler.on('iceConnectionFailed', function() {
 		console.log('received ice negotiation failed');
 		callback({'status':'failed', 'errorcode': 1007}); // Failure on call
+		releaseUserMedia();
 		currentSession = null;
 		clearTimeout(iceConnectedTimeout);
 		if (userAgent != null) {
@@ -508,12 +546,15 @@ function make_call(username, voiceBridge, server, callback, recall, isListenOnly
 	currentSession.mediaHandler.on('iceConnectionConnected', function() {
 		console.log('Received ICE status changed to connected');
 		if (callICEConnected === false) {
-			callICEConnected = true;
-			clearTimeout(iceConnectedTimeout);
-			if (callActive === true) {
-				callback({'status':'started'});
+			// Edge is only ready once the status is 'completed' so we need to skip this step
+			if (!bowser.msedge) {
+				callICEConnected = true;
+				clearTimeout(iceConnectedTimeout);
+				if (callActive === true) {
+					callback({'status':'started'});
+				}
+				clearTimeout(callTimeout);
 			}
-			clearTimeout(callTimeout);
 		}
 	});
 	
@@ -537,7 +578,28 @@ function webrtc_hangup(callback) {
 	if (callback) {
 	  currentSession.on('bye', callback);
 	}
-	currentSession.bye();
+	try {
+		currentSession.bye();
+	} catch (err) {
+		console.log("Forcing to cancel current session");
+		currentSession.cancel();
+	}
+}
+
+function releaseUserMedia() {
+	if (!!userMicMedia) {
+		console.log("Releasing media tracks");
+	
+		userMicMedia.getAudioTracks().forEach(function(track) {
+			track.stop();
+		});
+
+		userMicMedia.getVideoTracks().forEach(function(track) {
+			track.stop();
+		});
+		
+		userMicMedia = null;
+	}
 }
 
 function isWebRTCAvailable() {

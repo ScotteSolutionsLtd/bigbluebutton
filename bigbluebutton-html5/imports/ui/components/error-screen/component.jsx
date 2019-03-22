@@ -1,20 +1,30 @@
-import React, { Component, PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
 import { defineMessages, injectIntl } from 'react-intl';
-
-import styles from './styles.scss';
+import { Meteor } from 'meteor/meteor';
+import Button from '/imports/ui/components/button/component';
+import logoutRouteHandler from '/imports/utils/logoutRouteHandler';
+import { Session } from 'meteor/session';
+import { styles } from './styles';
 
 const intlMessages = defineMessages({
   500: {
     id: 'app.error.500',
+    defaultMessage: 'Ops, something went wrong',
   },
   404: {
     id: 'app.error.404',
+    defaultMessage: 'Not found',
   },
   401: {
-    id: 'app.about.401',
+    id: 'app.error.401',
   },
-  403: {
-    id: 'app.about.403',
+  400: {
+    id: 'app.error.400',
+  },
+  leave: {
+    id: 'app.error.leaveLabel',
+    description: 'aria-label for leaving',
   },
 });
 
@@ -29,11 +39,19 @@ const defaultProps = {
   code: 500,
 };
 
-class ErrorScreen extends Component {
-  render() {
-    const { intl, code, children } = this.props;
+class ErrorScreen extends React.PureComponent {
+  componentDidMount() {
+    Meteor.disconnect();
+  }
 
-    let formatedMessage = intl.formatMessage(intlMessages[500]);
+  render() {
+    const {
+      intl,
+      code,
+      children,
+    } = this.props;
+
+    let formatedMessage = intl.formatMessage(intlMessages[defaultProps.code]);
 
     if (code in intlMessages) {
       formatedMessage = intl.formatMessage(intlMessages[code]);
@@ -41,14 +59,30 @@ class ErrorScreen extends Component {
 
     return (
       <div className={styles.background}>
-        <h1 className={styles.code}>
+        <h1 className={styles.codeError}>
           {code}
         </h1>
         <h1 className={styles.message}>
           {formatedMessage}
         </h1>
-        <div className={styles.content}>
+        <div className={styles.separator} />
+        <div>
           {children}
+        </div>
+        {
+          !Session.get('errorMessageDescription') || (
+          <div className={styles.sessionMessage}>
+            {Session.get('errorMessageDescription')}
+          </div>)
+        }
+        <div>
+          <Button
+            size="sm"
+            color="primary"
+            className={styles.button}
+            onClick={logoutRouteHandler}
+            label={intl.formatMessage(intlMessages.leave)}
+          />
         </div>
       </div>
     );

@@ -1,6 +1,6 @@
 package org.bigbluebutton.air.chat.views {
 	import org.bigbluebutton.air.common.views.NoTabView;
-	import org.bigbluebutton.lib.chat.views.ChatViewBase;
+	import org.bigbluebutton.air.main.views.TopToolbarBase;
 	
 	import spark.components.SkinnableContainer;
 	import spark.layouts.VerticalLayout;
@@ -15,11 +15,6 @@ package org.bigbluebutton.air.chat.views {
 			l.horizontalAlign = "center";
 			layout = l;
 			
-			var topToolbar:TopToolbarChat = new TopToolbarChat();
-			topToolbar.percentWidth = 100;
-			topToolbar.height = 60;
-			addElement(topToolbar);
-			
 			var skinnableWrapper:SkinnableContainer = new SkinnableContainer();
 			skinnableWrapper.styleName = "subViewContent";
 			skinnableWrapper.percentWidth = 100;
@@ -31,6 +26,10 @@ package org.bigbluebutton.air.chat.views {
 			skinnableWrapper.addElement(participantsView);
 			
 			addElement(skinnableWrapper);
+		}
+		
+		override protected function createToolbar():TopToolbarBase {
+			return new TopToolbarChat();
 		}
 	}
 }

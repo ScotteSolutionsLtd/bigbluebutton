@@ -1,13 +1,24 @@
+import _ from 'lodash';
 import Users from '/imports/api/users';
 import { Meteor } from 'meteor/meteor';
 import { check } from 'meteor/check';
 import Logger from '/imports/startup/server/logger';
-import { isAllowedTo } from '/imports/startup/server/userPermissions';
 
 import userLeaving from './methods/userLeaving';
 
-Meteor.publish('current-user', function (credentials) {
+Meteor.publish('current-user', function currentUserPub(credentials) {
   const { meetingId, requesterUserId, requesterToken } = credentials;
+
+  const connectionId = this.connection.id;
+  const onCloseConnection = Meteor.bindEnvironment(() => {
+    try {
+      userLeaving(credentials, requesterUserId, connectionId);
+    } catch (e) {
+      Logger.error(`Exception while executing userLeaving: ${e}`);
+    }
+  });
+
+  this._session.socket.on('close', _.debounce(onCloseConnection, 100));
 
   check(meetingId, String);
   check(requesterUserId, String);
@@ -28,24 +39,33 @@ Meteor.publish('current-user', function (credentials) {
   return Users.find(selector, options);
 });
 
-Meteor.publish('users', function (credentials) {
-  const { meetingId, requesterUserId, requesterToken } = credentials;
+function users(credentials, isModerator = false) {
+  const {
+    meetingId,
+    requesterUserId,
+    requesterToken,
+  } = credentials;
 
   check(meetingId, String);
   check(requesterUserId, String);
   check(requesterToken, String);
 
-  if (!isAllowedTo('subscribeUsers', credentials)) {
-    this.error(new Meteor.Error(402, "The user was not authorized to subscribe for 'Users'"));
-  }
-
-  this.onStop(() => {
-    userLeaving(credentials, requesterUserId);
-  });
-
   const selector = {
-    meetingId,
+    $or: [
+      { meetingId },
+    ],
   };
+
+  if (isModerator) {
+    const User = Users.findOne({ userId: requesterUserId });
+    if (!!User && User.moderator) {
+      selector.$or.push({
+        'breakoutProps.isBreakoutUser': true,
+        'breakoutProps.parentId': meetingId,
+        connectionStatus: 'online',
+      });
+    }
+  }
 
   const options = {
     fields: {
@@ -53,7 +73,14 @@ Meteor.publish('users', function (credentials) {
     },
   };
 
-  Logger.info(`Publishing Users for ${meetingId} ${requesterUserId} ${requesterToken}`);
+  Logger.debug(`Publishing Users for ${meetingId} ${requesterUserId} ${requesterToken}`);
 
   return Users.find(selector, options);
-});
+}
+
+function publish(...args) {
+  const boundUsers = users.bind(this);
+  return boundUsers(...args);
+}
+
+Meteor.publish('users', publish);
