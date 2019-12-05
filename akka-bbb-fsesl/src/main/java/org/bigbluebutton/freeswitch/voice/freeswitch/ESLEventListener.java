@@ -11,8 +11,11 @@ import org.bigbluebutton.freeswitch.voice.events.ScreenshareStartedEvent;
 import org.freeswitch.esl.client.IEslEventListener;
 import org.freeswitch.esl.client.transport.event.EslEvent;
 import org.jboss.netty.channel.ExceptionEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ESLEventListener implements IEslEventListener {
+    private static Logger log = LoggerFactory.getLogger(ESLEventListener.class);
 
     private static final String START_TALKING_EVENT = "start-talking";
     private static final String STOP_TALKING_EVENT = "stop-talking";
@@ -41,12 +44,14 @@ public class ESLEventListener implements IEslEventListener {
 
     @Override
     public void exceptionCaught(ExceptionEvent e) {
+        log.warn("Exception caught: ", e);
 //        setChanged();
 //        notifyObservers(e);
     }
 
     private static final Pattern GLOBAL_AUDION_PATTERN = Pattern.compile("(GLOBAL_AUDIO)_(.*)$");
     private static final Pattern CALLERNAME_PATTERN = Pattern.compile("(.*)-bbbID-(.*)$");
+    private static final Pattern CALLERNAME_WITH_SESS_INFO_PATTERN = Pattern.compile("^(.*)_(\\d+)-bbbID-(.*)$");
     
     @Override
     public void conferenceEventJoin(String uniqueId, String confName, int confSize, EslEvent event) {
@@ -73,7 +78,11 @@ public class ESLEventListener implements IEslEventListener {
             conferenceEventListener.handleConferenceEvent(dsStart);
         } else {
             Matcher matcher = CALLERNAME_PATTERN.matcher(callerIdName);
-            if (matcher.matches()) {
+            Matcher callWithSess = CALLERNAME_WITH_SESS_INFO_PATTERN.matcher(callerIdName);
+            if (callWithSess.matches()) {
+                voiceUserId = callWithSess.group(1).trim();
+                callerIdName = callWithSess.group(3).trim();
+            } else if (matcher.matches()) {
                 voiceUserId = matcher.group(1).trim();
                 callerIdName = matcher.group(2).trim();
             } else {
@@ -83,7 +92,24 @@ public class ESLEventListener implements IEslEventListener {
                 voiceUserId = "v_" + memberId.toString();
             }
 
-            VoiceUserJoinedEvent pj = new VoiceUserJoinedEvent(voiceUserId, memberId.toString(), confName, callerId, callerIdName, muted, speaking, "none");
+            String callerUUID = this.getMemberUUIDFromEvent(event);
+            log.info("Caller joined: conf=" + confName +
+                    ",uuid=" + callerUUID +
+                    ",memberId=" + memberId +
+                    ",callerId=" + callerId +
+                    ",callerIdName=" + callerIdName +
+                    ",muted=" + muted +
+                    ",talking=" + speaking
+                    );
+
+            VoiceUserJoinedEvent pj = new VoiceUserJoinedEvent(voiceUserId,
+                    memberId.toString(),
+                    confName,
+                    callerId,
+                    callerIdName,
+                    muted,
+                    speaking,
+                    "none");
             conferenceEventListener.handleConferenceEvent(pj);
         }
     }
@@ -100,6 +126,13 @@ public class ESLEventListener implements IEslEventListener {
             DeskShareEndedEvent dsEnd = new DeskShareEndedEvent(confName, callerId, callerIdName);
             conferenceEventListener.handleConferenceEvent(dsEnd);
         } else {
+            String callerUUID = this.getMemberUUIDFromEvent(event);
+            log.info("Caller left: conf=" + confName +
+                    ",uuid=" + callerUUID +
+                    ",memberId=" + memberId +
+                    ",callerId=" + callerId +
+                    ",callerIdName=" + callerIdName
+            );
             VoiceUserLeftEvent pl = new VoiceUserLeftEvent(memberId.toString(), confName);
             conferenceEventListener.handleConferenceEvent(pl);
         }
@@ -140,7 +173,7 @@ public class ESLEventListener implements IEslEventListener {
             VoiceConfRunningEvent pt = new VoiceConfRunningEvent(confName, false);
             conferenceEventListener.handleConferenceEvent(pt);
         } else {
-            System.out.println("Unknown conference Action [" + action + "]");
+            log.warn("Unknown conference Action [" + action + "]");
         }
     }
 
@@ -200,7 +233,7 @@ public class ESLEventListener implements IEslEventListener {
         } 
 
         else {
-            System.out.println("Processing UNKNOWN conference Action " + action + "]");
+            log.warn("Processing UNKNOWN conference Action " + action + "]");
         }
     }
 
@@ -210,13 +243,14 @@ public class ESLEventListener implements IEslEventListener {
     
     @Override
     public void eventReceived(EslEvent event) {
-//        System.out.println("ESL Event Listener received event=[" + event.getEventName() + "]" +
-//                event.getEventHeaders().toString());
-//        if (event.getEventName().equals(FreeswitchHeartbeatMonitor.EVENT_HEARTBEAT)) {
+        //System.out.println("ESL Event Listener received event=[" + event.getEventName() + "]" +
+        //        event.getEventHeaders().toString());
+        if (event.getEventName().equals("heartbeat")) {
+            log.info("Received heartbeat from FreeSWITCH");
 ////           setChanged();
 //           notifyObservers(event);
 //           return; 
-//        }
+        }
     }
 
     private Integer getMemberIdFromEvent(EslEvent e) {
@@ -226,6 +260,19 @@ public class ESLEventListener implements IEslEventListener {
     private String getCallerIdFromEvent(EslEvent e) {
         return e.getEventHeaders().get("Caller-Caller-ID-Number");
     }
+
+    private String getMemberUUIDFromEvent(EslEvent e) {
+        return e.getEventHeaders().get("Caller-Unique-ID");
+    }
+
+    private String getCallerChannelCreateTimeFromEvent(EslEvent e) {
+        return e.getEventHeaders().get("Caller-Channel-Created-Time");
+    }
+
+    private String getCallerChannelHangupTimeFromEvent(EslEvent e) {
+        return e.getEventHeaders().get("Caller-Channel-Hangup-Time");
+    }
+
 
     private String getCallerIdNameFromEvent(EslEvent e) {
         return e.getEventHeaders().get("Caller-Caller-ID-Name");

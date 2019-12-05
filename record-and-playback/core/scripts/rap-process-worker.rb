@@ -22,8 +22,9 @@ require '../lib/recordandplayback'
 require 'rubygems'
 require 'yaml'
 require 'fileutils'
+require 'optparse'
 
-def process_archived_meetings(recording_dir)
+def process_archived_meetings(recording_dir, pattern)
   sanity_done_files = Dir.glob("#{recording_dir}/status/sanity/*.done")
 
   FileUtils.mkdir_p("#{recording_dir}/status/processed")
@@ -43,7 +44,19 @@ def process_archived_meetings(recording_dir)
       next
     end
 
+    unless pattern.nil?
+      next unless pattern.match(done_base)
+
+      BigBlueButton.logger.info("Processing #{done_base} because it matched the pattern #{pattern.inspect}")
+    end
+
     step_succeeded = true
+
+    # Generate captions
+    ret = BigBlueButton.exec_ret('ruby', 'utils/captions.rb', '-m', meeting_id)
+    if ret != 0
+      BigBlueButton.logger.warn("Failed to generate caption files #{ret}")
+    end
 
     # Iterate over the list of recording processing scripts to find available
     # types. For now, we look for the ".rb" extension - TODO other scripting
@@ -135,7 +148,8 @@ begin
   props = YAML::load(File.open('bigbluebutton.yml'))
   redis_host = props['redis_host']
   redis_port = props['redis_port']
-  BigBlueButton.redis_publisher = BigBlueButton::RedisWrapper.new(redis_host, redis_port)
+  redis_password = props['redis_password']
+  BigBlueButton.redis_publisher = BigBlueButton::RedisWrapper.new(redis_host, redis_port, redis_password)
 
   log_dir = props['log_dir']
   recording_dir = props['recording_dir']
@@ -144,9 +158,18 @@ begin
   logger.level = Logger::INFO
   BigBlueButton.logger = logger
 
-  BigBlueButton.logger.debug("Running rap-process-worker...")
-  
-  process_archived_meetings(recording_dir)
+  options = { pattern: nil }
+  OptionParser.new do |opt|
+    opt.on('-p PATTERN') { |o| options[:pattern] = o }
+  end.parse!
+  pattern = Regexp.new(options[:pattern]) unless options[:pattern].nil?
+
+  if pattern.nil?
+    BigBlueButton.logger.debug("Running rap-process-worker...")
+  else
+    BigBlueButton.logger.debug("Running rap-process-worker with pattern #{pattern.inspect}...")
+  end
+  process_archived_meetings(recording_dir, pattern)
 
   BigBlueButton.logger.debug("rap-process-worker done")
 

@@ -9,6 +9,7 @@ import logoutRouteHandler from '/imports/utils/logoutRouteHandler';
 import Rating from './rating/component';
 import { styles } from './styles';
 import logger from '/imports/startup/client/logger';
+import Users from '/imports/api/users';
 
 const intlMessage = defineMessages({
   410: {
@@ -100,9 +101,15 @@ class MeetingEnded extends React.PureComponent {
     this.state = {
       selected: 0,
     };
+
+    const user = Users.findOne({ userId: Auth.userID });
+    if (user) {
+      this.localUserRole = user.role;
+    }
+
     this.setSelectedStar = this.setSelectedStar.bind(this);
     this.sendFeedback = this.sendFeedback.bind(this);
-    this.shouldShowFeedback = getFromUserSettings('askForFeedbackOnLogout', Meteor.settings.public.app.askForFeedbackOnLogout);
+    this.shouldShowFeedback = getFromUserSettings('bbb_ask_for_feedback_on_logout', Meteor.settings.public.app.askForFeedbackOnLogout);
   }
 
   componentDidMount() {
@@ -125,12 +132,16 @@ class MeetingEnded extends React.PureComponent {
       return;
     }
 
+    const { fullname } = Auth.credentials;
+
     const message = {
       rating: selected,
       userId: Auth.userID,
+      userName: fullname,
       authToken: Auth.token,
       meetingId: Auth.meetingID,
       comment: MeetingEnded.getComment(),
+      userRole: this.localUserRole,
     };
     const url = '/html5client/feedback';
     const options = {
@@ -142,7 +153,7 @@ class MeetingEnded extends React.PureComponent {
     };
 
     // client logger
-    logger.info({ feedback: message, logCode: 'feedback' }, 'Feedback');
+    logger.info({ logCode: 'feedback_functionality', extraInfo: { feedback: message } }, 'Feedback component');
 
     const FEEDBACK_WAIT_TIME = 500;
     setTimeout(() => {
@@ -163,11 +174,18 @@ class MeetingEnded extends React.PureComponent {
     } = this.state;
 
     const noRating = selected <= 0;
+
+    logger.info({ logCode: 'meeting_ended_code', extraInfo: { endedCode: code } }, 'Meeting ended component');
+
     return (
       <div className={styles.parent}>
         <div className={styles.modal}>
           <div className={styles.content}>
-            <h1 className={styles.title}>{intl.formatMessage(intlMessage[code])}</h1>
+            <h1 className={styles.title} data-test="meetingEndedModalTitle">
+              {
+                intl.formatMessage(intlMessage[code] || intlMessage[430])
+              }
+            </h1>
             <div className={styles.text}>
               {this.shouldShowFeedback
                 ? intl.formatMessage(intlMessage.subtitle)

@@ -10,8 +10,10 @@
 }
 
 .content {
+  display: flex;
+  flex-direction: column;
   justify-content: center;
-  padding-bottom: 0;
+  padding: 0;
   margin-right: auto;
   margin-left: auto;
   width: 100%;
@@ -30,7 +32,7 @@
 .modal {
   @extend .modal;
   padding: 1.5rem;
-  min-height: 20rem;
+  min-height: 23rem;
 }
 
 .closeBtn {
@@ -67,6 +69,8 @@
 }
 
 .startBtn {
+  display: flex;
+  align-self: center;
   &:focus {
     outline: none !important;
   }
@@ -82,24 +86,6 @@
   bottom:   20px;
   color: var(--color-white) !important;
   background-color: var(--color-link) !important;
-}
-
-.stopBtn {
-  &:focus {
-    outline: none !important;
-  }
-
-  i{
-    color: red;
-  }
-
-  margin-left: 50%;
-  width: 40%;
-  display: block;
-  position: absolute;
-  bottom:   20px;
-  color: var(--color-white) !important;
-  background-color: red !important;
 }
 
 .title {
@@ -134,7 +120,7 @@
     border: 1px solid var(--color-gray-lighter);
     border-radius: var(--border-radius);
 
-    [style~="--enableAnimation:1;"] & {
+    :global(.animationsEnabled) & {
       transition: box-shadow .2s;
     }
   }
@@ -146,16 +132,16 @@
 
 .urlError {
   color: red;
-  padding: 1em;
-  
-  [style~="--enableAnimation:1;"] & {
+  padding: 1em 0 2.5em 0;
+
+  :global(.animationsEnabled) & {
     transition: 1s;
   }
 }
 
-.youtubeNote {
+.externalVideoNote {
   color: var(--color-gray);
   font-size: var(--font-size-small);
   font-style: italic;
-  padding-top: var(--sm-padding-x);
+  padding-top: var(--sm-padding-y);
 }
